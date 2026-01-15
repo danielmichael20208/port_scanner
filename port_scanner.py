@@ -1,25 +1,22 @@
 #!/usr/bin/env python3
 """
 Hybrid Mode Port Scanner (Fingerprint Edition)
-Features:
-- TCP connect scan
-- Banner grabbing
-- TTL extraction
-- Basic OS fingerprinting
-- SIEM JSON log emission
+Cybersecurity tool that performs:
+✔ TCP connect scanning
+✔ Full port state enumeration (open/closed/refused/filtered/timeout/error)
+✔ Banner grabbing
+✔ TTL extraction
+✔ Basic OS fingerprinting
+✔ Structured SIEM JSON logging for DanielOS
 """
 
 import socket
-import re
-import json
-from datetime import datetime, timezone
 from tools.log_writer_example import log_event
 
-DEFAULT_PORTS = [22, 80, 443, 139, 445, 3389, 8080, 8443]  # Expand as needed
+DEFAULT_PORTS = [22, 80, 443, 139, 445, 3389, 8080, 8443]
 
 
 def guess_os_from_ttl(ttl):
-    """Rough OS fingerprinting from TTL."""
     if ttl is None:
         return "Unknown"
     if ttl <= 64:
@@ -27,7 +24,7 @@ def guess_os_from_ttl(ttl):
     if ttl <= 128:
         return "Windows"
     if ttl <= 255:
-        return "Cisco/Networking Device"
+        return "Cisco/Networking"
     return "Unknown"
 
 
@@ -42,76 +39,62 @@ def grab_banner(sock):
 
 def extract_ttl_from_socket(sock):
     try:
-        # Retrieve TTL from IP level
         ttl = sock.getsockopt(socket.IPPROTO_IP, socket.IP_TTL)
         return ttl
     except Exception:
         return None
 
 
-def scan_port(host, port):
+def scan_port(host, port, timeout=1.0):
     result = {
         "port": port,
-        "open": False,
+        "state": None,
         "service": None,
         "banner": None,
         "ttl": None,
-        "os_guess": None
+        "os_guess": None,
+        "reason": None
     }
 
-    try:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(0.8)
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.settimeout(timeout)
 
-        # Connect scan
-        connect = sock.connect_ex((host, port))
-        if connect == 0:
-            result["open"] = True
+    try:
+        code = sock.connect_ex((host, port))
+
+        if code == 0:
+            result["state"] = "open"
             result["banner"] = grab_banner(sock)
             result["ttl"] = extract_ttl_from_socket(sock)
             result["os_guess"] = guess_os_from_ttl(result["ttl"])
+            result["reason"] = "connection-accepted"
+
+        elif code in (111, 10061):
+            result["state"] = "refused"
+            result["reason"] = "connection-refused"
+
+        elif code == 113:
+            result["state"] = "filtered"
+            result["reason"] = "icmp-filtered"
+
+        else:
+            result["state"] = "closed"
+            result["reason"] = f"connect-ex-code-{code}"
 
         sock.close()
-    except Exception:
-        pass
+
+    except socket.timeout:
+        result["state"] = "timeout"
+        result["reason"] = "no-response"
+
+    except Exception as e:
+        result["state"] = "error"
+        result["reason"] = str(e)
 
     return result
 
 
-def scan_host(host, ports=DEFAULT_PORTS):
-    events = []
-
-    for port in ports:
-        res = scan_port(host, port)
-
-        if res["open"]:
-            service = identify_service(port, res["banner"])
-            res["service"] = service
-
-            # Log event to SIEM
-            log_event(
-                source="scan",
-                component="PortScanner",
-                level="OPEN",
-                event_type="PORT_OPEN",
-                message=f"Port {port} open ({service}).",
-                context={
-                    "host": host,
-                    "port": port,
-                    "service": service,
-                    "ttl": res["ttl"],
-                    "os_guess": res["os_guess"],
-                    "banner": res["banner"]
-                }
-            )
-
-            events.append(res)
-
-    return events
-
-
 def identify_service(port, banner):
-    """Map port + banners to services."""
     common = {
         22: "SSH",
         80: "HTTP",
@@ -123,29 +106,80 @@ def identify_service(port, banner):
         8443: "HTTPS-Alt",
     }
     if banner:
-        if "SSH" in banner.upper():
+        b = banner.upper()
+        if "SSH" in b:
             return "SSH"
-        if "HTTP" in banner.upper():
+        if "HTTP" in b:
             return "HTTP"
-        if "SMB" in banner.upper():
+        if "SMB" in b:
             return "SMB"
-        if "RDP" in banner.upper():
+        if "RDP" in b:
             return "RDP"
     return common.get(port, "Unknown")
 
 
+def scan_host(host, ports=DEFAULT_PORTS):
+    results = []
+
+    for port in ports:
+        res = scan_port(host, port)
+
+        state = res["state"]
+
+        if state == "open":
+            res["service"] = identify_service(port, res["banner"])
+            level = "OPEN"
+            event_type = "PORT_OPEN"
+        elif state == "refused":
+            level = "WARN"
+            event_type = "PORT_REFUSED"
+        elif state == "filtered":
+            level = "WARN"
+            event_type = "PORT_FILTERED"
+        elif state == "closed":
+            level = "INFO"
+            event_type = "PORT_CLOSED"
+        elif state == "timeout":
+            level = "INFO"
+            event_type = "PORT_TIMEOUT"
+        else:
+            level = "ERROR"
+            event_type = "PORT_ERROR"
+
+        # Emit SIEM log event
+        log_event(
+            source="scan",
+            component="PortScanner",
+            level=level,
+            event_type=event_type,
+            message=f"{state.upper()} port {port}",
+            context={
+                "host": host,
+                "port": port,
+                "state": res["state"],
+                "reason": res["reason"],
+                "service": res.get("service"),
+                "ttl": res.get("ttl"),
+                "os_guess": res.get("os_guess"),
+                "banner": res.get("banner"),
+            }
+        )
+
+        results.append(res)
+
+    return results
+
+
 if __name__ == "__main__":
     print("=== Port Scanner (Fingerprint Edition) ===")
-    host = input("Enter target host (default = 127.0.0.1): ").strip() or "127.0.0.1"
+    target = input("Enter target (default: 127.0.0.1): ").strip() or "127.0.0.1"
+    print(f"Scanning {target}...\n")
 
-    print(f"Scanning {host} ...")
-    results = scan_host(host)
+    scan_results = scan_host(target)
 
-    if not results:
-        print("No open ports found.")
-    else:
-        print("\nOpen ports discovered:")
-        for r in results:
-            print(f"{r['port']}/tcp open {r['service']} (OS: {r['os_guess']}, TTL={r['ttl']})")
+    for r in scan_results:
+        print(f"{r['port']}/tcp {r['state'].upper()} "
+              f"{f'({r.get("service")})' if r.get('service') else ''} "
+              f"{f'OS={r.get("os_guess")}' if r.get("os_guess") else ''}")
 
     print("\n(Event logs written to data/logs_web.json)")
