@@ -11,7 +11,7 @@ Cybersecurity tool that performs:
 """
 
 import socket
-from tools.log_writer_example import log_event
+from tools.log_writer import log_event
 
 DEFAULT_PORTS = [22, 80, 443, 139, 445, 3389, 8080, 8443]
 
