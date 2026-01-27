@@ -2,22 +2,19 @@ import json
 import os
 from datetime import datetime
 
-LOG_PATH = os.path.join("data", "logs_web.json")
+LOG_FILE = os.path.join(os.path.dirname(__file__), "../data/logs_web.json")
 
-def log_event(
-    source,
-    level="INFO",
-    event_type="EVENT",
-    message="",
-    component=None,
-    context=None
-):
+
+def log_event(source, level, event_type, message, component=None, context=None, timestamp=None):
+    """
+    Local structured SIEM logging used by all tools before upload.
+    """
     event = {
-        "timestamp": datetime.utcnow().isoformat(),
-        "source": source.lower(),
+        "timestamp": timestamp or datetime.utcnow().isoformat(timespec="seconds") + "Z",
+        "source": source.upper(),
         "level": level.upper(),
         "event_type": event_type,
-        "message": message,
+        "message": message
     }
 
     if component:
@@ -26,20 +23,17 @@ def log_event(
     if context:
         event["context"] = context
 
-    os.makedirs("data", exist_ok=True)
-
-    # Initialize file if missing
-    if not os.path.exists(LOG_PATH):
-        with open(LOG_PATH, "w") as f:
-            json.dump([], f, indent=2)
-
+    # Read existing logs
     try:
-        with open(LOG_PATH, "r") as f:
+        with open(LOG_FILE, "r", encoding="utf-8") as f:
             logs = json.load(f)
-    except:
+    except (FileNotFoundError, json.JSONDecodeError):
         logs = []
 
     logs.append(event)
 
-    with open(LOG_PATH, "w") as f:
+    os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)
+    with open(LOG_FILE, "w", encoding="utf-8") as f:
         json.dump(logs, f, indent=2)
+
+    return event
