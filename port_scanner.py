@@ -164,3 +164,5 @@ if __name__ == "__main__":
 
     from tools.upload_logs import upload_logs
     upload_logs()
+    from tools.upload_logs import upload_logs
+    upload_logs("auto")
