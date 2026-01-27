@@ -165,10 +165,7 @@ def scan_host(host, ports=DEFAULT_PORTS):
 
 
 if __name__ == "__main__":
-    print("=== Port Scanner (Fingerprint Edition) ===")
     target = input("Enter target (default: 127.0.0.1): ").strip() or "127.0.0.1"
-    print(f"Scanning {target}...\n")
-
     scan_results = scan_host(target)
 
     for r in scan_results:
@@ -177,3 +174,6 @@ if __name__ == "__main__":
         print(f"{r['port']}/tcp {r['state'].upper()} {svc} {os}")
 
     print("\n(Event logs written to data/logs_web.json)")
+    
+    from tools.upload_logs import upload_logs
+    upload_logs()
