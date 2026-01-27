@@ -166,3 +166,6 @@ if __name__ == "__main__":
     upload_logs()
     from tools.upload_logs import upload_logs
     upload_logs("auto")
+    from tools.upload_logs import push_logs_to_github
+    push_logs_to_github()
+
