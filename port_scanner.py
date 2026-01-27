@@ -107,14 +107,10 @@ def identify_service(port, banner):
     }
     if banner:
         b = banner.upper()
-        if "SSH" in b:
-            return "SSH"
-        if "HTTP" in b:
-            return "HTTP"
-        if "SMB" in b:
-            return "SMB"
-        if "RDP" in b:
-            return "RDP"
+        if "SSH" in b: return "SSH"
+        if "HTTP" in b: return "HTTP"
+        if "SMB" in b: return "SMB"
+        if "RDP" in b: return "RDP"
     return common.get(port, "Unknown")
 
 
@@ -123,12 +119,11 @@ def scan_host(host, ports=DEFAULT_PORTS):
 
     for port in ports:
         res = scan_port(host, port)
-
         state = res["state"]
 
         if state == "open":
             res["service"] = identify_service(port, res["banner"])
-            level = "OPEN"
+            level = "WARN"
             event_type = "PORT_OPEN"
         elif state == "refused":
             level = "WARN"
@@ -146,9 +141,8 @@ def scan_host(host, ports=DEFAULT_PORTS):
             level = "ERROR"
             event_type = "PORT_ERROR"
 
-        # Emit SIEM log event
         log_event(
-            source="scan",
+            source="scanner",
             component="PortScanner",
             level=level,
             event_type=event_type,
@@ -156,7 +150,7 @@ def scan_host(host, ports=DEFAULT_PORTS):
             context={
                 "host": host,
                 "port": port,
-                "state": res["state"],
+                "state": state,
                 "reason": res["reason"],
                 "service": res.get("service"),
                 "ttl": res.get("ttl"),
@@ -178,8 +172,8 @@ if __name__ == "__main__":
     scan_results = scan_host(target)
 
     for r in scan_results:
-        print(f"{r['port']}/tcp {r['state'].upper()} "
-              f"{f'({r.get("service")})' if r.get('service') else ''} "
-              f"{f'OS={r.get("os_guess")}' if r.get("os_guess") else ''}")
+        svc = f"({r['service']})" if r.get("service") else ""
+        os = f"OS={r['os_guess']}" if r.get("os_guess") else ""
+        print(f"{r['port']}/tcp {r['state'].upper()} {svc} {os}")
 
     print("\n(Event logs written to data/logs_web.json)")
