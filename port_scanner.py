@@ -3,10 +3,10 @@
 Hybrid Mode Port Scanner (Fingerprint Edition)
 Cybersecurity tool that performs:
 ✔ TCP connect scanning
-✔ Full port state enumeration (open/closed/refused/filtered/timeout/error)
+✔ Full port state enumeration
 ✔ Banner grabbing
 ✔ TTL extraction
-✔ Basic OS fingerprinting
+✔ OS fingerprinting
 ✔ Structured SIEM JSON logging for DanielOS
 """
 
@@ -19,12 +19,9 @@ DEFAULT_PORTS = [22, 80, 443, 139, 445, 3389, 8080, 8443]
 def guess_os_from_ttl(ttl):
     if ttl is None:
         return "Unknown"
-    if ttl <= 64:
-        return "Linux/Unix"
-    if ttl <= 128:
-        return "Windows"
-    if ttl <= 255:
-        return "Cisco/Networking"
+    if ttl <= 64: return "Linux/Unix"
+    if ttl <= 128: return "Windows"
+    if ttl <= 255: return "Cisco/Networking"
     return "Unknown"
 
 
@@ -39,8 +36,7 @@ def grab_banner(sock):
 
 def extract_ttl_from_socket(sock):
     try:
-        ttl = sock.getsockopt(socket.IPPROTO_IP, socket.IP_TTL)
-        return ttl
+        return sock.getsockopt(socket.IPPROTO_IP, socket.IP_TTL)
     except Exception:
         return None
 
@@ -96,14 +92,9 @@ def scan_port(host, port, timeout=1.0):
 
 def identify_service(port, banner):
     common = {
-        22: "SSH",
-        80: "HTTP",
-        443: "HTTPS",
-        139: "NetBIOS",
-        445: "SMB",
-        3389: "RDP",
-        8080: "HTTP-Alt",
-        8443: "HTTPS-Alt",
+        22: "SSH", 80: "HTTP", 443: "HTTPS",
+        139: "NetBIOS", 445: "SMB", 3389: "RDP",
+        8080: "HTTP-Alt", 8443: "HTTPS-Alt",
     }
     if banner:
         b = banner.upper()
@@ -121,29 +112,22 @@ def scan_host(host, ports=DEFAULT_PORTS):
         res = scan_port(host, port)
         state = res["state"]
 
+        # severity mapping
         if state == "open":
             res["service"] = identify_service(port, res["banner"])
             level = "WARN"
             event_type = "PORT_OPEN"
-        elif state == "refused":
-            level = "WARN"
-            event_type = "PORT_REFUSED"
-        elif state == "filtered":
-            level = "WARN"
-            event_type = "PORT_FILTERED"
-        elif state == "closed":
+
+        elif state in ("refused", "filtered", "closed", "timeout"):
             level = "INFO"
-            event_type = "PORT_CLOSED"
-        elif state == "timeout":
-            level = "INFO"
-            event_type = "PORT_TIMEOUT"
+            event_type = f"PORT_{state.upper()}"
+
         else:
             level = "ERROR"
             event_type = "PORT_ERROR"
 
         log_event(
-            source="scanner",
-            component="PortScanner",
+            source="SCAN",
             level=level,
             event_type=event_type,
             message=f"{state.upper()} port {port}",
@@ -165,7 +149,10 @@ def scan_host(host, ports=DEFAULT_PORTS):
 
 
 if __name__ == "__main__":
+    print("=== Port Scanner (Fingerprint Edition) ===")
     target = input("Enter target (default: 127.0.0.1): ").strip() or "127.0.0.1"
+    print(f"Scanning {target}...\n")
+
     scan_results = scan_host(target)
 
     for r in scan_results:
@@ -174,6 +161,6 @@ if __name__ == "__main__":
         print(f"{r['port']}/tcp {r['state'].upper()} {svc} {os}")
 
     print("\n(Event logs written to data/logs_web.json)")
-    
+
     from tools.upload_logs import upload_logs
     upload_logs()
