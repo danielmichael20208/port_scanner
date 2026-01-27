@@ -4,17 +4,31 @@ from datetime import datetime
 
 LOG_PATH = os.path.join("data", "logs_web.json")
 
-def log_event(source, level="INFO", event_type="EVENT", message=""):
+def log_event(
+    source,
+    level="INFO",
+    event_type="EVENT",
+    message="",
+    component=None,
+    context=None
+):
     event = {
         "timestamp": datetime.utcnow().isoformat(),
         "source": source.lower(),
         "level": level.upper(),
         "event_type": event_type,
-        "message": message
+        "message": message,
     }
+
+    if component:
+        event["component"] = component
+
+    if context:
+        event["context"] = context
 
     os.makedirs("data", exist_ok=True)
 
+    # Initialize file if missing
     if not os.path.exists(LOG_PATH):
         with open(LOG_PATH, "w") as f:
             json.dump([], f, indent=2)
