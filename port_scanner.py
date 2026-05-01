@@ -123,11 +123,11 @@ def scan_host(host, ports=DEFAULT_PORTS):
             event_type = f"PORT_{state.upper()}"
 
         else:
-            level = "ERROR"
+            level = "ALERT"
             event_type = "PORT_ERROR"
 
         log_event(
-            source="SCAN",
+            source="Python-Scanner",
             level=level,
             event_type=event_type,
             message=f"{state.upper()} port {port}",
@@ -162,10 +162,9 @@ if __name__ == "__main__":
 
     print("\n(Event logs written to data/logs_web.json)")
 
-    from tools.upload_logs import upload_logs
-    upload_logs()
-    from tools.upload_logs import upload_logs
-    upload_logs("auto")
-    from tools.upload_logs import push_logs_to_github
-    push_logs_to_github()
+    try:
+        from tools.upload_logs import push_logs_to_github
+        push_logs_to_github()
+    except Exception as e:
+        print(f"[WARN] SIEM upload failed: {e}")
 
